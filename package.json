@@ -1,0 +1,17 @@
+{
+  "name": "wikimedia-eventstreams",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "NODE_ENV=production node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Joaquin Oltra <joaquin@chimeces.com> (http://chimeces.com)",
+  "license": "ISC",
+  "dependencies": {
+    "eventsource": "^1.0.1",
+    "twit": "^2.2.5"
+  }
+}
