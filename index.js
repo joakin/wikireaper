@@ -13,116 +13,73 @@ const config = {
 
 const twitter = new Twit(config);
 
-let lastEventData = null;
-let lastEvent = null;
+let firstRun = true;
+const deaths = {};
 
-function initEventSource() {
-  console.log(`Connecting to EventStreams at ${url}`);
-  const eventSource = new EventSource(url, {
-    headers: {
-      'Last-Event-ID': JSON.stringify([
-        { topic: 'codfw.mediawiki.recentchange', partition: 0, offset: -1 },
-        {
-          topic: 'eqiad.mediawiki.recentchange',
-          partition: 0,
-          // offset: 164621801 // 164539804 // 163892993 //177141947 - 10000
-          offset: 177186114 // 177141947 - 100000 // 164621801 // 164539804 // 163892993 //177141947 - 10000
-        }
-      ])
-    }
-  });
+pollWQS();
 
-  eventSource.onopen = function(event) {
-    console.log('--- Opened connection.');
-  };
+function pollWQS() {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  yesterday.setUTCHours(0);
+  yesterday.setUTCMinutes(0);
+  yesterday.setUTCSeconds(0);
+  yesterday.setUTCMilliseconds(0);
+  const from = yesterday.toISOString();
+  const query = `SELECT ?item ?itemLabel ?desc WHERE { ?item wdt:P31 wd:Q5 . ?item wdt:P570 ?died . FILTER (?died >= "${from}"^^xsd:dateTime) . SERVICE wikibase:label { bd:serviceParam wikibase:language "en" } } ORDER BY DESC(?died)`;
+  const url = `https://query.wikidata.org/bigdata/namespace/wdq/sparql?query=${encodeURIComponent(query)}&format=json`;
+  console.log('Polling', from);
+  getJSON(url)
+    .then(res => {
+      const newDeaths = updateResults(res.results.bindings);
 
-  eventSource.onerror = function(event) {
-    console.error('--- Encountered error', event);
-  };
+      if (firstRun) {
+        firstRun = false;
+      } else {
+        notifyNewDeaths(newDeaths);
+      }
 
-  eventSource.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    if (data.server_name === 'www.wikidata.org') {
-      processEvent(data)
-        .then(data => {
-          deathFound(event, data);
-          lastEventData = data;
-          lastEvent = event;
-        })
-        .catch(e => {
-          if (e.message !== 'No match' && e.message != 'Not today')
-            console.log(e.message);
-        });
-    }
-  };
-}
-
-http
-  .createServer((req, res) => {
-    if (!lastEventData) return res.end('Nothin');
-    res.end(JSON.stringify([lastEvent, lastEventData]), null, 2);
-  })
-  .listen(process.env.PORT || 3001);
-
-function getDateFromComment(comment) {
-  return comment.match(/P570\]\]\: (\d\d?) ([A-Za-z]+) (\d\d\d\d)$/);
-}
-
-function processEvent(data) {
-  return new Promise((res, rej) => {
-    const match = getDateFromComment(data.comment);
-    if (!match) throw new Error('No match');
-    const [_, dayStr, monthStr, yearStr] = match;
-    const [day, month, year] = [
-      parseFloat(dayStr),
-      monthToNumber(monthStr),
-      parseFloat(yearStr)
-    ];
-    const now = new Date();
-    if (
-      now.getFullYear() === year &&
-      now.getMonth() === month &&
-      now.getDate() - 3 < day &&
-      now.getDate() >= day
-    ) {
-      res(data);
-    }
-    rej(new Error('Not today'));
-  });
-}
-
-const months = {
-  January: 0,
-  February: 1,
-  March: 2,
-  April: 3,
-  May: 4,
-  June: 5,
-  July: 6,
-  August: 7,
-  September: 8,
-  October: 9,
-  November: 10,
-  December: 11
-};
-function monthToNumber(str) {
-  if (months[str]) return months[str];
-
-  throw new Error('invalid month');
-}
-
-function deathFound(event, data) {
-  const title = data.title;
-  getItem(title)
-    .then(response => {
-      if (response.entities[title]) post(event, data, response.entities[title]);
+      setTimeout(pollWQS, 30 * 60 * 1000);
     })
-    .catch(e => console.log(title, e.message));
+    .catch(console.log);
 }
 
-function getItem(title) {
+function updateResults(bindings) {
+  // Remove missing deaths
+  // Old death
+  Object.keys(deaths).forEach((death, key) => {
+    if (!bindings.find(({ item }) => item.value === key)) delete deaths[key];
+  });
+
+  // Collect new ones and return them
+  return bindings.reduce((newDeaths, b) => {
+    // New death
+    if (!/^Q\d+$/.test(b.itemLabel.value) && !deaths[b.item.value]) {
+      // Cache it
+      deaths[b.item.value] = b;
+      return newDeaths.concat(b);
+    }
+    return newDeaths;
+  }, []);
+}
+
+function notifyNewDeaths(deaths) {
+  deaths.reduce((p, b) => {
+    const id = b.item.value.split('http://www.wikidata.org/entity/')[1];
+    const url = `https://www.wikidata.org/wiki/Special:EntityData/${id}.json`;
+
+    return getJSON(url)
+      .then(response => {
+        if (response.entities[id]) post(response.entities[id]);
+      })
+      .catch(e => {
+        console.log(id, e.message);
+        return true;
+      });
+  }, Promise.resolve());
+}
+
+function getJSON(url) {
   return new Promise((resolve, rej) => {
-    const url = `https://www.wikidata.org/wiki/Special:EntityData/${title}.json`;
     https
       .get(url, res => {
         const { statusCode } = res;
@@ -131,7 +88,7 @@ function getItem(title) {
         let error;
         if (statusCode !== 200) {
           error = new Error(`Request Failed.\n` + `Status Code: ${statusCode}`);
-        } else if (!/^application\/json/.test(contentType)) {
+        } else if (!/json/.test(contentType)) {
           error = new Error(
             `Invalid content-type.\n` +
               `Expected application/json but received ${contentType}`
@@ -163,23 +120,24 @@ function getItem(title) {
   });
 }
 
-const templates = [
-  (data, eventData) =>
-    `Whoops! ¯\\_(ツ)_/¯ ${getLabel(data)} -${getDescription(data)}- is dead. ${getLink(data)} ${getDate(eventData)}`,
-  (data, eventData) =>
-    `RIP ${getLabel(data)}, ${getDescription(data)}. ${getLink(data)} ${getDate(eventData)}`
-];
+http
+  .createServer((req, res) => {
+    res.end(JSON.stringify(deaths), null, 2);
+  })
+  .listen(process.env.PORT || 3001);
 
-function getDate(data) {
-  const match = getDateFromComment(data.comment);
-  if (!match) return '';
-  return `${match[1]} ${match[2]}, ${match[3]}`;
-}
+const templates = [
+  data =>
+    `¯\\_(ツ)_/¯ ${getLabel(data)} -${getDescription(data)}- has left us. ${getLink(data)}`,
+  data =>
+    `Whoops! ${getLabel(data)} -${getDescription(data)}- is dead. ${getLink(data)}`,
+  data => `RIP ${getLabel(data)}, ${getDescription(data)}. ${getLink(data)}`
+];
 
 function getLabel(item) {
   if (item.labels) {
     return (
-      item.labels['en'].value ||
+      (item.labels['en'] && item.labels['en'].value) ||
       (Object.keys(item.labels).length > 0 &&
         item.labels[Object.keys(item.labels)[0]].value) ||
       'Unknown'
@@ -191,7 +149,7 @@ function getLabel(item) {
 function getDescription(item) {
   if (item.descriptions) {
     return (
-      item.descriptions['en'].value ||
+      (item.descriptions['en'] && item.descriptions['en'].value) ||
       (Object.keys(item.descriptions).length > 0 &&
         item.descriptions[Object.keys(item.descriptions)[0]].value) ||
       ''
@@ -203,7 +161,7 @@ function getDescription(item) {
 function getLink(item) {
   if (item.sitelinks) {
     return (
-      item.sitelinks['enwiki'].url ||
+      (item.sitelinks['enwiki'] && item.sitelinks['enwiki'].url) ||
       (Object.keys(item.sitelinks).length > 0 &&
         item.sitelinks[Object.keys(item.sitelinks)[0]].url) ||
       ''
@@ -212,10 +170,10 @@ function getLink(item) {
   return '';
 }
 
-function post(event, data, item) {
+function post(item) {
   const tpl = templates[Math.floor(Math.random() * templates.length)];
 
-  const status = tpl(item, data);
+  const status = tpl(item);
   twitter.post('statuses/update', { status }, function(err, data, response) {
     if (err) {
       console.log(err);
@@ -223,5 +181,3 @@ function post(event, data, item) {
     console.log(status);
   });
 }
-
-initEventSource();
