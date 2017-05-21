@@ -1,6 +1,6 @@
 # Wikireaper
 
-Bot that reports notable deaths to twitter using wikidata.
+Bot that reports notable deaths to twitter using wikidata. - https://twitter.com/wikireaper
 
 ## Dev
 
