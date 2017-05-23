@@ -131,32 +131,30 @@ const templates = [
     `¯\\_(ツ)_/¯ ${getLabel(data)} -${getDescription(data)}- has left us. ${getLink(data)}`,
   data =>
     `Whoops! ${getLabel(data)} -${getDescription(data)}- is dead. ${getLink(data)}`,
-  data => 
-    `RIP ${getLabel(data)}, ${getDescription(data)}. ${getLink(data)}`,
-  data => 
+  data => `RIP ${getLabel(data)}, ${getDescription(data)}. ${getLink(data)}`,
+  data =>
     `${getLabel(data)}, ${getDescription(data)}, has shuffled off this mortal coil. ${getLink(data)}`,
-  data => 
+  data =>
     `${getLabel(data)}, ${getDescription(data)}, has passed on, perished, expired. ${getLink(data)}`,
-  data => 
+  data =>
     `Bereft of life, ${getLabel(data)}, ${getDescription(data)}, now rests in peace. ${getLink(data)}`,
-  data => 
+  data =>
     `${getLabel(data)}, ${getDescription(data)} has kicked the bucket. ${getLink(data)}`,
-  data => 
+  data =>
     `Oh dear, ${getLabel(data)}, ${getDescription(data)}, is pushing up daisies. ${getLink(data)}`,
-  data => 
+  data =>
     `${getLabel(data)}, ${getDescription(data)}, has joined the choir invisible. ${getLink(data)}`,
-  data => 
+  data =>
     `${getLabel(data)}, ${getDescription(data)}, is probably not pining for the fjords. ${getLink(data)}`,
-  data => 
+  data =>
     `${getLabel(data)}, ${getDescription(data)}, is dead as a dodo, doorknob, or stump. ${getLink(data)}`,
-  data => 
+  data =>
     `The dust has been bitten by ${getLabel(data)}, ${getDescription(data)}. ${getLink(data)}`,
-  data => 
-    `☠ ${getLabel(data)} ☠ ${getDescription(data)} ☠ ${getLink(data)} ☠`,
-  data => 
+  data => `☠ ${getLabel(data)} ☠ ${getDescription(data)} ☠ ${getLink(data)} ☠`,
+  data =>
     `💀 ${getLabel(data)} 💀 ${getDescription(data)} 💀 ${getLink(data)} 💀`,
-  data => 
-    `Dearly departed, ${getLabel(data)}, ${getDescription(data)}, now defunct. ${getLink(data)}`,
+  data =>
+    `Dearly departed, ${getLabel(data)}, ${getDescription(data)}, now defunct. ${getLink(data)}`
 ];
 
 function getLabel(item) {
